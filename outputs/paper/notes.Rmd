@@ -22,7 +22,7 @@ The purpose of this hands-on workshop is to de-mystify MRP and give participants
 - 9:25 - 9:45: Participants pair-code introductory example.
 - 9:45 - 9:55: Live coding extended example.
 - 10:00 - 10:30: Participants pair-code extended example.
-- 10:30 - 10:50: Live coding example of gathering data from the ABS, and more advanced options.
+- 10:30 - 10:50: Live example improving the workflow: gathering data from the ABS, improving the model, and communicating results.
 - 10:50 - 11:00: Concluding remarks about strengths, weaknesses, and potential areas of application.
 
 
@@ -34,11 +34,15 @@ R can be downloaded for free from: http://cran.utstat.utoronto.ca/.
 
 RStudio is an interface that makes using R easier and it can be downloaded for free from: https://rstudio.com/products/rstudio/download/.
 
+We will use brms later in the tutorial. In order to use this your Mac needs to have Xcode and a bunch of other things installed. To do this go to:
+https://github.com/rmacoslib/r-macos-rtools#how-do-i-use-the-installer and within the 'assets' bit of the project's release page, download 'macos-rtools-3.1.0.pkg' and then install that. It'll take a few minutes because it is downloading and setting up a bunch of things.
+
 
 
 ## Getting help
 At some point your code won't run or will throw an error. This is normal, and it happens to everyone. It happens to me on a daily, sometimes hourly, basis. Getting frustrated is understandable. There are a few steps that are worthwhile taking when this happens:
 
+- If you are having issues with a particular function then the Help file for that function can be accessed by adding a ? to the front. e.g. '?lm'.
 -	If you're getting an error then try googling it, (I find it can help to include the term ‘R' and 'MRP' or ‘tidyverse' or the relevant package name). 
 -	If your code just isn't running, then try searching for what you are trying to do, e.g. ‘save PDF of graph in R made using ggplot'. Almost always there are relevant blog posts or Stack Overflow answers that will help.
 -	Try to restart R and R Studio and load everything again.
@@ -56,71 +60,87 @@ It's almost always helpful to take a break and come back the next day.
 # Introduction, motivation, and example
 Multi-level regression with post-stratification (MRP) is a handy approach when dealing with survey data. Essentially, it trains a model based on the survey, and then applies that trained model to another dataset. There are two main, related, advantages:
 
-1) It can allow us to re-weight in a way that includes uncertainty front-of-mind and takes advantage of the information that we do have.
+1) It can allow us to 're-weight' in a way that includes uncertainty front-of-mind and isn't hamstrung by small samples.
 2) It can allow us to use broad surveys to speak to subsets.
 
-From a practical perspective, it also tends to be less expensive to collect non-probability samples
+From a practical perspective, it tends to be less expensive to collect non-probability samples and so there are benefits of being able to use these types of data. That said, it is not a magic-bullet and the laws of statistics still apply. We will have larger uncertainty around our estimates and they will still be subject to all the usual biases. 
 
-That said, it is not a magic-bullet and the laws of statistics still apply. We will have larger uncertainty around our estimates and they will still be subject to all the usual biases. 
-
-One famous example is Wei Wang, David Rothschild, Sharad Goel, and Andrew Gelman, 2014, 'Forecasting elections with non-representative polls', *International Journal of Forecasting*. They used data from the  Xbox gaming platform, to forecast the 2012 US Presidential Election.
+One famous example is Wei Wang, David Rothschild, Sharad Goel, and Andrew Gelman, 2014, 'Forecasting elections with non-representative polls', *International Journal of Forecasting*. They used data from the Xbox gaming platform to forecast the 2012 US Presidential Election.
 
 Key facts about the set-up:
 
-- Data from an opt-in poll which was available continuously on the Xbox gaming platform during the 45 days preceding the 2012 US presidential election.
-- Each day there were three to five questions, including voter intention - "If the election were held today, who would you vote for?"
-- The respondents were allowed to answer at most once per day. 
-- The first time they participated they were also asked to provide basic demographic information about themselves, including their sex, race, age, education, state, party ID, political ideology, and who they voted for in the 2008 presidential election. 
+- Data from an opt-in poll which was available on the Xbox gaming platform during the 45 days preceding the 2012 US presidential election.
+- Each day there were three to five questions, including voter intention: "If the election were held today, who would you vote for?"
+- Respondents were allowed to answer at most once per day.
+- First-time respondents were asked to provide information about themselves, including their sex, race, age, education, state, party ID, political ideology, and who they voted for in the 2008 presidential election. 
 - In total, 750,148 interviews were conducted, with 345,858 unique respondents - over 30,000 of whom completed five or more polls
 - Young men dominate the Xbox population: 18-to-29-year-olds comprise 65 per cent of the Xbox dataset, compared to 19 per cent in the exit poll; and men make up 93 per cent of the Xbox sample but only 47 per cent of the electorate.
 
-Given the US electorate, they use two stages. First, is a respondent likely to vote for one of Obama and Romney:
+Given the US electorate, they use a two-stage modelling approach. The details don't really matter too much, and essentially they model how likely a respondent is to vote for Obama, given various information such as state, education, sex, etc:
 $$
-Pr(Y_i\in\{\mbox{Obama, Romney}\}) = \\
-\mbox{logit}^{-1}(\alpha_0 + \alpha_1(\mbox{state last vote share})\\ 
-+ \alpha_{j[i]}^{\mbox{state}} + \alpha_{j[i]}^{\mbox{edu}} + \alpha_{j[i]}^{\mbox{sex}} + \alpha_{j[i]}^{\mbox{age}} + \alpha_{j[i]}^{\mbox{race}} + \alpha_{j[i]}^{\mbox{party ID}}\\ \alpha_{j[i]}^{\mbox{ideology}} + \alpha_{j[i]}^{\mbox{last vote}}
+Pr\left(Y_i = \mbox{Obama} | Y_i\in\{\mbox{Obama, Romney}\}\right) = \mbox{logit}^{-1}(\alpha_0 + \alpha_1(\mbox{state last vote share}) 
++ \alpha_{j[i]}^{\mbox{state}} + \alpha_{j[i]}^{\mbox{edu}} + \alpha_{j[i]}^{\mbox{sex}}...
 )
-$$
-The second model is similar: 
-$$
-Pr\left(Y_i = \mbox{Obama} | Y_i\in\{\mbox{Obama, Romney}\}\right) = .... \\
 $$
 They run this in R using glmer() from lme4.
 
-Now having they need to postratify, where each of these "cell-level estimates are weighted by the proportion of the electorate in each cell and aggregated to the appropriate level (i.e., state or national)." This means that they need cross-tabulated population data. In general some type of census would work, or there are other very large surveys available in the US, but the difficulty is that the variables need to be available on a cross-tab basis. As such, they use exit polls (not an option for Australia in general).
+Having a trained model that considers the effect of these various independent variables on support for the candidates, they now postratify, where each of these "cell-level estimates are weighted by the proportion of the electorate in each cell and aggregated to the appropriate level (i.e., state or national)." 
+
+This means that they need cross-tabulated population data. In general, the census would have worked, or one of the other large surveys available in the US, but the difficulty is that the variables need to be available on a cross-tab basis. As such, they use exit polls (not an option for Australia in general).
 
 They make state-specific estimates by post-stratifying to the features of each state.
-![alt text](figures/states.png)
+![State estimates from the XBox paper.](../../inputs/figures/states.png)
 
 Similarly, they can examine demographic-differences.
-![alt text](figures/demographics.png)
+![Demographic differences from the XBox paper.](../../inputs/figures/demographics.png)
 
 Finally, they convert their estimates into electoral college estimates.
-![alt text](figures/electoral_college.png)
+![Electoral College estimates from the XBox paper.](../../inputs/figures/electoral_college.png)
 
 
 
 # Live-coding introductory example
 
+The workflow that we are going to use is: 
+
+1) read in the poll;
+2) model the poll; 
+3) read in the post-stratification data; and
+4) apply the model to the post-stratification data.
+
 First load the packages.
 ```{r initial_model_workplace_setup, message=FALSE, warning=FALSE}
-library(broom)
-library(tidyverse) 
+# Uncomment these (by deleting the #) if you need to install the packages
+# install.packages("broom")
+# install.packages("here")
+# install.packages("skimr")
+# install.packages("tidyverse")
+
+library(broom) # Helps make the regression results tidier
+library(here) # Helps make file referencing easier.
+library(skimr) # Helps summarise the data
+library(tidyverse) # Helps make programming with R easier
 ```
 
-Then generate some sample polling data to analyse. The advantage of this is that we have some idea of what to expect from the model. We'll just use two variables here: gender, which is either females or males (I understand and agree that gender is non-binary, but this is what is available from the ABS); and age_group, which is one of four groups: ages18to29, ages30to44, ages45to59, ages60plus.
+Then load some sample polling data to analyse. I have generated this data so that we have some idea of what to expect from the model. We'll just use two variables here: gender, which is either females or males (I understand and agree that gender is non-binary, but this is what is available from the ABS); and age_group, which is one of four groups: ages 18 to 29, ages 30 to 44, ages 45 to 59, ages 60 plus.
 
 ```{r initial_model_simulate_data, message=FALSE,}
-example_poll <- read_csv("outputs/data/example_poll.csv")
+example_poll <- read_csv(here::here("outputs", "data", "example_poll.csv")) # Here we read in a CSV file and assign it to a dataset called 'example_poll'
 
-head(example_poll)
+head(example_poll) # Displays the first 10 rows
 
-summary(example_poll)
+# Look at some summary statistics to make sure the data seem reasonable
+summary(example_poll) 
+skimr::skim(example_poll)
 ```
 
-I generated this polling data and just made males and older people less likely to vote for the Australian Labor Party; and females and younger people more likely to vote for the Labor Party. Females are over-sampled.
+I generated this polling data to make both made males and older people less likely to vote for the Australian Labor Party; and females and younger people more likely to vote for the Labor Party. Females are over-sampled. As such, we should have an ALP skew on the dataset.
 
-
+```{r summarise_model_simulate_data, message=FALSE,}
+# The '%>%' is called a 'pipe' and it takes whatever the output is of the command before it, and pipes it to the command after it.
+example_poll %>% # So we are taking our example_poll dataset and using it as an input to 'summarise'.
+  summarise(raw_ALP_prop = sum(supports_ALP) / nrow(example_poll)) # summarise reduces the dimensions, so here we are 
+```
 
 Now we'd like to see if we can get our results back (we should find females less likely than males to vote for Australian Labor Party and that people are less likely to vote Australian Labor Party as they get older). Our model is:
 $$
@@ -130,29 +150,32 @@ $$
 This model says that the probability that some person, $j$, will vote for the Australian Labor Party depends on their gender and their age-group. Based on our simulated data, we would like older age-groups to be less likely to vote for the Australian Labor Party and for males to be less likely to vote for the Australian Labor Party.
 
 ```{r initial_model_analyse_example_polling}
+# Here we are running an OLS regression with supports_ALP as the dependent variable and gender and age_group as the independent variables. The dataset that we are using is example_poll. We are then saving that OLS regression to a variable called 'model'.
 model <- lm(supports_ALP ~ gender + age_group, 
             data = example_poll
             )
-broom::tidy(model)
+
+broom::tidy(model) # broom::tidy just displays the outputs of the regression in a nice table.
 ```
 
-Essentially we've got our inputs back. We just used regular OLS even though our dependent variable is a binary. In practice, it's usually fine to start with an OLS model and then iterate toward an approach that may be more appropriate such as logistic regression or whatever, but where the results are a little more difficult to interpret. If you wanted to do that then the place to start would be glmer() from the R package lme4.
+Essentially we've got our inputs back. We just used regular OLS even though our dependent variable is a binary. (It's usually fine to start with an OLS model and then iterate toward an approach that may be more appropriate such as logistic regression or whatever, but where the results are a little more difficult to interpret.) If you wanted to do that then the place to start would be glmer() from the R package lme4, and we'll see that in the next section.
 
 Now we'd like to see if we can use what we found in the poll to get an estimate for each state based on their demographic features.
 
 First read in some real demographic data, on a seat basis, from the ABS (we'll go into the process of getting this later).
 
 ```{r initial_model_post_stratify_add_coefficients, message=FALSE, warning=FALSE}
-census_data <- read_csv("outputs/data/census_data.csv")
+census_data <- read_csv(here("outputs", "data", "census_data.csv"))
 head(census_data)
 ```
 
-We're just going to do some rough forecasts. For each gender and age_group we want the relevant coefficient in the example_data and we can construct the estimates (this code is based on @Alexander2019).
+We're just going to do some rough forecasts. For each gender and age_group we want the relevant coefficient in the example_data and we can construct the estimates.
 ```{r initial_model_post_stratify_age_sex_specific}
+# Here we are making predictions using our model with some new data from the census, and we saving the results of those predictions by adding a new column to the census_data dataset called 'estimate'.
 census_data$estimate <- 
   model %>% 
   predict(newdata = census_data)
-  
+
 census_data %>% 
   mutate(alp_predict_prop = estimate*cell_prop_of_division_total) %>% 
   group_by(state) %>% 
@@ -168,12 +191,13 @@ We now have post-stratified estimates for each division. Our model has a fair fe
 
 If you run into issues then I am happy to help point you in the right direction. The full code of the example will be made available after the workshop, so it doesn't matter if you're not able to complete the example now.
 
-As a reminder, the steps that you need to take are: 
+As a reminder, our workflow is: 
 
 1) read in the poll;
 2) model the poll; 
 3) read in the post-stratification data;
-4) apply your model to the post-stratification data;
+4) apply your model to the post-stratification data.
+
 
 # Live coding extended example
 
@@ -181,39 +205,53 @@ We'd like to address some of the major issues with our approach, specifically be
 
 First load the packages.
 ```{r brms_model_workplace_setup, message=FALSE, warning=FALSE}
+# Uncomment these if you need to install the packages
+# install.packages("broom")
+# install.packages("brms")
+# install.packages("here") 
+# install.packages("tidybayes")
+# install.packages("tidyverse") 
+
 library(broom)
-library(brms)
+library(brms) # Used for the modelling
+library(here)
+library(tidybayes) # Used to help understand the modelling estimates
 library(tidyverse) 
 ```
 
 As before, read in the polling dataset.
 
 ```{r brms_model_simulate_data, message=FALSE,}
-example_poll <- read_csv("outputs/data/example_poll.csv")
+example_poll <- read_csv(here("outputs", "data", "example_poll.csv"))
 
 head(example_poll)
 ```
 
-Now, using the same basic model as before, but in a Bayesian setting.
+Now, using the same basic model as before, but we move it to a setting that acknowledges the dependent variable as being binary, and in a Bayesian setting.
 
 ```{r brms_model_analyse_example_polling}
 model <- brm(supports_ALP ~ gender + age_group, 
              data = example_poll, 
-             family = bernoulli()
+             family = bernoulli(),
+             file = "../../outputs/model/brms_model"
              )
+
+model <- read_rds(here("outputs", "model", "brms_model.rds"))
+
 summary(model)
 ```
 
-We've moved to the bernoulli distribution, so we have to do a bit more work to understand our results.
+We've moved to the bernoulli distribution, so we have to do a bit more work to understand our results, but we are broadly getting back what we'd expect.
 
 As before, we'd like an estimate for each state based on their demographic features and start by reading in the data.
 
 ```{r brms_model_post_stratify_add_coefficients, message=FALSE, warning=FALSE}
-census_data <- read_csv("outputs/data/census_data.csv")
+census_data <- read_csv(here("outputs", "data", "census_data.csv"))
 head(census_data)
 ```
 
-We're just going to do some rough forecasts. For each gender and age_group we want the relevant coefficient in the example_data and we can construct the estimates (this code is based on @Alexander2019).
+We're just going to do some rough forecasts. For each gender and age_group we want the relevant coefficient in the example_data and we can construct the estimates (this code is from Monica Alexander https://www.monicaalexander.com/posts/2019-08-07-mrp/).
+
 ```{r brms_model_post_stratify_age_sex_specific}
 post_stratified_estimates <- 
   model %>% 
@@ -238,19 +276,23 @@ We now have post-stratified estimates for each division. Our new Bayesian approa
 
 If you run into issues then I am happy to help point you in the right direction. The full code of the example will be made available after the workshop, so it doesn't matter if you're not able to complete the example now.
 
+As a reminder, our workflow is: 
+
+1) read in the poll;
+2) model the poll; 
+3) read in the post-stratification data;
+4) apply your model to the post-stratification data.
+
+
 # Live coding
-I will now briefly demonstate some other aspects that may be useful to improve three aspects of a typical MRP workflow: 
+I will now briefly demonstate some other aspects that may be useful to improve three aspects of our MRP workflow: 
 
-1) gathering and preparing some data from the ABS that we could use to post-stratify on; 
-2) add some complexity to our model by introducing brms; and
-3) communicate our results.
+1) (Workflow step 2) adding some more complexity to our model; and
+2) (Workflow step 3) gathering and preparing some data from the ABS that we could use to post-stratify on.
 
-## Gathering data
-Getting data tends to be the most troublesome aspect. I've found that the census is fairly useful although it can require some tradeoffs. I've found the best way to get the sub-cell counts is to use ABS Tablebuilder, which you can get access to if you're associated with the ANU.
+We will also add a fifth stage to our workflow: Communicating our results.
 
-![alt text](figures/tablebuilder.png)
 
-Helpfully you can create custom groupings for geography and other aspects.
 
 ## Adding layers
 We may like to try to add some layers to our model. For instance, if we liked for there to be a different intercept for each state.
@@ -263,10 +305,17 @@ model <- brm(supports_ALP ~ gender + age_group + (1|state),
 summary(model)
 ```
 
+## Gathering data
+Getting data tends to be the most troublesome aspect. I've found that the census is fairly useful although it can require some tradeoffs. I've found the best way to get the sub-cell counts is to use ABS Tablebuilder, which you can get access to if you're associated with the ANU.
+
+![alt text](../../inputs/figures/tablebuilder.png)
+
+Helpfully you can create custom groupings for geography and other aspects.
+
 ## Making graphs
 It's interesting to see how the model is affecting the results. We can make a graph that does this.
 
-```{r, eval=FALSE}
+```{r}
 post_stratified_estimates %>% 
   ggplot(aes(y = mean, x = forcats::fct_inorder(state), color = "MRP estimate")) + 
   geom_point() +
@@ -305,7 +354,7 @@ There's not a lot of work that's been done using Australian data, so there's ple
 4. (Politics) Kastellec, J. P., Lax, J. R., and Phillips, J., 2016, 'Estimating State Public Opinion With Multi-Level Regression and Poststratification using R'.
 5. (Politics) Hanretty, C., ,2019, 'An introduction to multilevel regression and post-stratification for estimating constituency opinion'.
 6. (Not politics) Downes, M., Gurrin, L.C., English, D.R., Pirkis, J., Currier, D., Spittal, M.J. and Carlin, J.B., 2018. Multilevel Regression and Poststratification: A Modeling Approach to Estimating Population Quantities From Highly Selected Survey Samples. American Journal of Epidemiology, 187(8), pp.1780-1790.
-7. (Politics) Jackman, S., Ratcliff, S., and Mansillo, L. (2019). Small area estimates of public opin- ion: Model-assisted post-stratification of data from voter advice applications. Working paper presented at 2019 Annual Asian Political Methodology Meeting
+7. (Politics) Jackman, S., Ratcliff, S., and Mansillo, L. (2019). Small area estimates of public opinion: Model-assisted post-stratification of data from voter advice applications. Working paper presented at 2019 Annual Asian Political Methodology Meeting
 
 If you don't have survey data, then there is some individual-level data available on the Australian Data Archive: https://ada.edu.au. You will need to request access to the datasets. 
 
